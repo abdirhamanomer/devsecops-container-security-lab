@@ -1,3 +1,189 @@
+logo
+more
+question-ai-logo
+managemanage
+managemanage
+useruser
+fullfull
+closeclose
+Chat AI
+Hello! Is there any question I can help you with?
+How to use the capture feature to ask questions?
+How to save chat content in QuestionAI?
+
+Ask AI
+logo
+more
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 name: Flask Docker CI
 
 on:
@@ -41,13 +227,29 @@ jobs:
           curl -fsS http://127.0.0.1:5000/ | grep -q '"status":"running"'
           test "$(docker exec devsecops-ci id -un)" = "appuser"
           echo "PASS: health endpoint, homepage, non-root user"
-      - name: Scan Docker image with Trivy
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: 'devsecops-flask-lab:ci'
-          version: 'v0.76.1'
-          format: 'table'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          scanners: 'vuln'
-          exit-code: '0'
-          cache: 'false'
+
+      - name: Install verified Trivy binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="0.76.2"
+          ARCHIVE="$RUNNER_TEMP/trivy_${VERSION}_Linux-64bit.tar.gz"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output "$ARCHIVE" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
+          echo "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf  $ARCHIVE" | sha256sum --check -
+          mkdir -p "$RUNNER_TEMP/trivy-bin"
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/trivy-bin" trivy
+          "$RUNNER_TEMP/trivy-bin/trivy" --version
+
+      - name: Scan Docker image with Trivy (report only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/trivy-bin/trivy" image \
+            --scanners vuln \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            --format table \
+            --exit-code 0 \
+            devsecops-flask-lab:ci
+
