@@ -41,3 +41,13 @@ jobs:
           curl -fsS http://127.0.0.1:5000/ | grep -q '"status":"running"'
           test "$(docker exec devsecops-ci id -un)" = "appuser"
           echo "PASS: health endpoint, homepage, non-root user"
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: 'devsecops-flask-lab:ci'
+          version: 'v0.76.2'
+          format: 'table'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          scanners: 'vuln'
+          exit-code: '0'
+          cache: 'false'
