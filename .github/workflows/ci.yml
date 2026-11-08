@@ -15,19 +15,27 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # STEP 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
+      # STEP 2: Build Docker image
       - name: Build Docker image
         run: docker build -t devsecops-flask-lab:ci .
 
+      # STEP 3: Test application and non-root execution
       - name: Test live app and non-root execution
         shell: bash
         run: |
           set -euo pipefail
-          docker run -d --name devsecops-ci -p 127.0.0.1:5000:5000 devsecops-flask-lab:ci
+
+          docker run -d \
+            --name devsecops-ci \
+            -p 127.0.0.1:5000:5000 \
+            devsecops-flask-lab:ci
+
           trap 'docker rm -f devsecops-ci >/dev/null 2>&1 || true' EXIT
 
           for attempt in {1..20}; do
@@ -38,31 +46,57 @@ jobs:
           done
 
           curl -fsS http://127.0.0.1:5000/health | grep -q '"status":"ok"'
+
           curl -fsS http://127.0.0.1:5000/ | grep -q '"status":"running"'
+
           test "$(docker exec devsecops-ci id -un)" = "appuser"
+
           echo "PASS: health endpoint, homepage, non-root user"
 
+      # STEP 4: Install verified Trivy binary
       - name: Install verified Trivy binary
         shell: bash
         run: |
           set -euo pipefail
+
           VERSION="0.76.2"
+
           ARCHIVE="$RUNNER_TEMP/trivy_${VERSION}_Linux-64bit.tar.gz"
+
           curl --fail --location --retry 3 --retry-delay 2 \
             --output "$ARCHIVE" \
             "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
+
           echo "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf  $ARCHIVE" | sha256sum --check -
+
           mkdir -p "$RUNNER_TEMP/trivy-bin"
+
           tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/trivy-bin" trivy
+
           "$RUNNER_TEMP/trivy-bin/trivy" --version
 
+      # STEP 5: Scan Docker image (report only)
       - name: Scan Docker image with Trivy (report only)
         shell: bash
         run: |
           set -euo pipefail
+
           "$RUNNER_TEMP/trivy-bin/trivy" image \
             --scanners vuln \
             --severity CRITICAL,HIGH,MEDIUM,LOW \
             --format table \
             --exit-code 0 \
+            devsecops-flask-lab:ci
+
+      # STEP 6: Enforce automated security gate
+      - name: Enforce security gate (CRITICAL)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          "$RUNNER_TEMP/trivy-bin/trivy" image \
+            --scanners vuln \
+            --severity CRITICAL \
+            --format table \
+            --exit-code 1 \
             devsecops-flask-lab:ci
