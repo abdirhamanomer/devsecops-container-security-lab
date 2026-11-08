@@ -5,21 +5,25 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Copy dependencies
+# Copy application dependencies
 COPY requirements.txt .
 
-# Upgrade pip and install application dependencies
-RUN python -m pip install --no-cache-dir --upgrade pip==26.3 \
+# Update vulnerable Python packaging tools
+RUN python -m pip install --no-cache-dir --upgrade \
+    pip==26.3 \
+    setuptools==84.2.1 \
     && python -m pip install --no-cache-dir -r requirements.txt
 
-# Copy application
+# Copy the Flask application
 COPY app.py .
 
-# Create non-root application user
+# Create a non-root user
 RUN useradd --system --create-home appuser
 
+# Run the application as a non-root user
 USER appuser
 
 EXPOSE 5000
 
+# Start the application
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
