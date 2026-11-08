@@ -25,7 +25,38 @@ jobs:
       - name: Build Docker image
         run: docker build -t devsecops-flask-lab:ci .
 
-      # STEP 3: Test application and non-root execution
+      # STEP 3: Investigate setuptools vulnerabilities
+      - name: Investigate setuptools scan discrepancy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker run --rm -i \
+            --entrypoint python \
+            devsecops-flask-lab:ci - <<'PY'
+          import importlib.metadata as md
+          import json
+          from pathlib import Path
+
+          print("Installed setuptools:", md.version("setuptools"))
+          print("Installed pip:", md.version("pip"))
+
+          path = Path(md.distribution("pip").locate_file("pip/_vendor/bom.cdx.json"))
+          print("Bundled pip SBOM exists:", path.exists())
+
+          if path.exists():
+              data = json.loads(path.read_text(encoding="utf-8"))
+              versions = [
+                  component.get("version")
+                  for component in data.get("components", [])
+                  if component.get("name", "").lower() == "setuptools"
+              ]
+              print("Setuptools versions in bundled pip SBOM:", versions)
+          else:
+              print("No bundled pip SBOM at:", path)
+          PY
+
+      # STEP 4: Test Flask application
       - name: Test live app and non-root execution
         shell: bash
         run: |
@@ -46,21 +77,19 @@ jobs:
           done
 
           curl -fsS http://127.0.0.1:5000/health | grep -q '"status":"ok"'
-
           curl -fsS http://127.0.0.1:5000/ | grep -q '"status":"running"'
 
           test "$(docker exec devsecops-ci id -un)" = "appuser"
 
           echo "PASS: health endpoint, homepage, non-root user"
 
-      # STEP 4: Install verified Trivy binary
+      # STEP 5: Install verified Trivy binary
       - name: Install verified Trivy binary
         shell: bash
         run: |
           set -euo pipefail
 
           VERSION="0.76.2"
-
           ARCHIVE="$RUNNER_TEMP/trivy_${VERSION}_Linux-64bit.tar.gz"
 
           curl --fail --location --retry 3 --retry-delay 2 \
@@ -75,7 +104,7 @@ jobs:
 
           "$RUNNER_TEMP/trivy-bin/trivy" --version
 
-      # STEP 5: Scan Docker image (report only)
+      # STEP 6: Scan Docker image
       - name: Scan Docker image with Trivy (report only)
         shell: bash
         run: |
@@ -88,7 +117,7 @@ jobs:
             --exit-code 0 \
             devsecops-flask-lab:ci
 
-      # STEP 6: Enforce automated security gate
+      # STEP 7: Enforce security gate
       - name: Enforce security gate (CRITICAL)
         shell: bash
         run: |
